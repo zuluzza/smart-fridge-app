@@ -1,11 +1,7 @@
 package com.example.smartfridgeapp;
 
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.util.Log;
-
 import com.dropbox.core.DbxAppInfo;
-import com.dropbox.core.DbxAuthFinish;
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
@@ -13,9 +9,11 @@ import com.dropbox.core.DbxWebAuthNoRedirect;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.ListFolderResult;
 import com.dropbox.core.v2.files.Metadata;
-
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 
 public class DropboxClient {
@@ -31,18 +29,26 @@ public class DropboxClient {
                 "Smart-Fridge-App/0.0", Locale.getDefault().toString());
         DbxWebAuthNoRedirect dbxWebAuthNoRedirect = new DbxWebAuthNoRedirect(
                 dbxRequestConfig, dbxAppInfo);
-        String authorizeUrl = dbxWebAuthNoRedirect.start();
 
-        /* Leaving these as a TODO note
-        System.out.println("1. Authorize: Go to URL and click Allow : + authorizeUrl);
-        System.out.println("2. Auth Code: Copy authorization code and input here ");
-        String dropboxAuthCode ="";
-
-        DbxAuthFinish authFinish = dbxWebAuthNoRedirect.finish(dropboxAuthCode);
- */
         //TODO DO NOT COMMIT THIS LINE EVER!! create a better way for it to imported...
         String authAccessToken = "";
         dbxClient = new DbxClientV2(dbxRequestConfig, authAccessToken);
+    }
+    //TODO extract somewhere else as this is now used by other class
+    public String earlierVideoByFileName(String filename1, String filename2) throws ParseException {
+        if (filename1 == null && filename2 == null) {
+            return null;
+        }
+        if (filename1 == null) {
+            return filename2;
+        }
+        if (filename2 == null) {
+            return filename1;
+        }
+        SimpleDateFormat formatter = new SimpleDateFormat("MM_dd_yyyy_HH_mm_ss");
+        Date date1 = formatter.parse(filename1.replace(FILENAME_BEGINS_WITH,""));
+        Date date2 = formatter.parse(filename2.replace(FILENAME_BEGINS_WITH,""));
+        return date1.after(date2) ? filename1 : filename2;
     }
 
     public String getLatestVideoFileName() throws Exception {
@@ -54,19 +60,13 @@ public class DropboxClient {
         try
         {
             result = dbxClient.files().listFolder("");
-
             while (true)
             {
                 for (Metadata metadata : result.getEntries())
                 {
                     if(metadata.getPathLower().contains(FILENAME_BEGINS_WITH));
                     {
-                        if (latestFoundVideoFile == "")
-                        {
-                            latestFoundVideoFile = metadata.getName();
-                        } else {
-                            // TODO compare dates and use the latest
-                        }
+                        latestFoundVideoFile = (latestFoundVideoFile == "") ? metadata.getName() : earlierVideoByFileName(latestFoundVideoFile, metadata.getName());
                     }
                 }
 
@@ -89,7 +89,7 @@ public class DropboxClient {
         if (videoFolderPath == null) {
             throw new Exception("Do not know where to save file");
         }
-        FileOutputStream outputStream = new FileOutputStream(videoFolderPath + "/" + fileName);
+        FileOutputStream outputStream = new FileOutputStream(videoFolderPath + "/" + fileName.replace(".", "_") + ".mp4");
         DbxDownloader downloader = null;
         try {
             downloader = dbxClient.files().download("/" + fileName);

@@ -1,20 +1,22 @@
 package com.example.smartfridgeapp;
 
 import androidx.appcompat.app.AppCompatActivity;
-
-import android.app.PendingIntent;
 import android.content.Intent;
-import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.ResultReceiver;
 import android.util.Log;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.VideoView;
-import java.io.IOException;
+
+import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "SmartFridgeApp_MainActivity";
-    private static final String appFolderPathInDropbox = "smart-fridge";
     private static String currentVideoFile = null;
+    private ServiceResultReceiver downloadServiceResultReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,49 +24,58 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        PendingIntent pendingResult = createPendingResult(
-                DownloadVideoService.DOWNLOAD_VIDEO_REQUEST_CODE, new Intent(), 0);
+        downloadServiceResultReceiver = new ServiceResultReceiver(new Handler());
         Intent intent = new Intent(getApplicationContext(), DownloadVideoService.class);
+        intent.putExtra("receiver", downloadServiceResultReceiver);
         startService(intent);
-        //TODO show the last
 
         Log.d(TAG, "onCreate end");
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == DownloadVideoService.DOWNLOAD_VIDEO_REQUEST_CODE) {
-            switch (resultCode) {
-                /* POSSIBLE TODOS
-                case DownloadVideoService.AUTHENTICATION_FAILED_CODE:
-                    break;
-                case DownloadVideoService.DOWNLOAD_FAILED_CODE:
-                    break;
-                 */
-                case DownloadVideoService.ERROR_CODE:
-                    Log.e(TAG, "Download failed!");
-                    break;
-                case DownloadVideoService.SUCCESS_CODE:
-                    Log.d(TAG, "succesfully downloaded latest video");
-                    currentVideoFile = DownloadVideoService.getLatestVideoFileName();
-
-                    break;
-            }
-        }
-        super.onActivityResult(requestCode, resultCode, data);
-    }
-
     public void startVideoPlayback(View view) {
+        if (currentVideoFile == null) {
+            //TODO warn user as well?
+            Log.d(TAG, "Unable to start video because file is not set");
+            return;
+        }
         setContentView(R.layout.activity_main);
 
         VideoView videoView = (VideoView)findViewById(R.id.videoView);
-        //MediaController mediaController = new MediaController(this);
-        // mediaController.setAnchorView(videoView);
-        //videoView.setMediaController(mediaController);
         Log.d(TAG, "Going to show video from " + currentVideoFile);
-
-        videoView.setVideoPath(currentVideoFile);
-
+        Uri fileUri = Uri.fromFile(new File(currentVideoFile));
+        videoView.setVideoURI(fileUri);
+        //videoView.setVideoPath(currentVideoFile);
         videoView.start();
+    }
+
+    class ServiceResultReceiver extends ResultReceiver {
+        public ServiceResultReceiver(Handler handler) {
+            super(handler);
+        }
+
+        @Override
+        protected void onReceiveResult(int resultCode, Bundle resultData) {
+            switch (resultCode) {
+            /* POSSIBLE TODOS
+            case DownloadVideoService.AUTHENTICATION_FAILED_CODE:
+                break;
+            case DownloadVideoService.DOWNLOAD_FAILED_CODE:
+                break;
+             */
+            case DownloadVideoService.ERROR_CODE:
+                Log.e(TAG, "Download failed!");
+                break;
+            case DownloadVideoService.SUCCESS_CODE:
+                Log.d(TAG, "succesfully downloaded latest video");
+                currentVideoFile = DownloadVideoService.getLatestVideoFileName();
+
+                if (currentVideoFile != null) {
+                    TextView tv = (TextView)findViewById(R.id.textView);
+                    tv.setText("Current video " + currentVideoFile);
+                }
+                break;
+            }
+            super.onReceiveResult(resultCode, resultData);
+        }
     }
 }

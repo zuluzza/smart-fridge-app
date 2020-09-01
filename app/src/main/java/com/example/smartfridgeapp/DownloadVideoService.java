@@ -3,6 +3,8 @@ package com.example.smartfridgeapp;
 
 import android.app.IntentService;
 import android.content.Intent;
+import android.os.Bundle;
+import android.os.ResultReceiver;
 import android.util.Log;
 
 import com.dropbox.core.DbxException;
@@ -10,10 +12,10 @@ import com.dropbox.core.DbxException;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.File;
 import java.io.IOException;
 
 public class DownloadVideoService extends IntentService {
-    public static final int DOWNLOAD_VIDEO_REQUEST_CODE = 200;
     public static final int SUCCESS_CODE = 0;
     public static final int ERROR_CODE = 1;
     private static final String TAG = "SmartFridgeApp_DownloadIntentService";
@@ -26,6 +28,10 @@ public class DownloadVideoService extends IntentService {
 
     @Override
     protected void onHandleIntent (Intent intent){
+        final ResultReceiver receiver = intent.getParcelableExtra("receiver");
+        Bundle bundle=new Bundle();
+        boolean success = false;
+
         //authenticate
         try {
             dropboxClient.authDropbox(getAppKey(), getAppSecretKey());
@@ -40,21 +46,28 @@ public class DownloadVideoService extends IntentService {
         String path = getApplicationInfo().dataDir;
         dropboxClient.setVideoFolderPath(path);
 
-        String latestVideoFile = null;
+        String downloadedVideoFileName = null;
         try {
-            latestVideoFile = dropboxClient.getLatestVideoFileName();
+            downloadedVideoFileName = dropboxClient.getLatestVideoFileName();
         } catch (Exception e) {
             Log.e(TAG, "Failed to retrieve latest video file" + e.toString());
             e.printStackTrace();
         }
 
         try {
-            if (latestVideoFile == null) {
-                Log.e(TAG, "Cannot work without a video file");
-            }
-            else if (!dropboxClient.downloadFromDropbox(latestVideoFile))
+            if (downloadedVideoFileName == null || !dropboxClient.downloadFromDropbox(downloadedVideoFileName))
             {
-                //TODO use latest in local
+                // find the latest in local
+                File directory = new File(path);
+                File[] files = directory.listFiles();
+                for (int i = 0; i < files.length; i++ ) {
+                    latestVideoFileName = dropboxClient.earlierVideoByFileName(latestVideoFileName, files[i].getName());
+                }
+                Log.w(TAG, "Could not download new video, using latest in local");
+            } else {
+                success = true;
+                // TODO dropboxClient.downloadFromDropbox does same replacemnt on filename internally. There should be a way to do it for both at once (the input name is used for both downloading and saving now)
+                latestVideoFileName = "/data/data/com.example.smartfridgeapp/" + downloadedVideoFileName.replace(".", "_") + ".mp4";
             }
         } catch (DbxException e) {
             Log.e(TAG, "DbxException" + e.toString());
@@ -67,9 +80,16 @@ public class DownloadVideoService extends IntentService {
             Log.e(TAG, "Exception" + e.toString());
             e.printStackTrace();
         }
+
+        if (success) {
+            receiver.send(SUCCESS_CODE, bundle);
+        } else {
+            receiver.send(ERROR_CODE, bundle);
+        }
     }
 
     public static String getLatestVideoFileName() {
+        //TODO is null after download
         return latestVideoFileName;
     }
 
